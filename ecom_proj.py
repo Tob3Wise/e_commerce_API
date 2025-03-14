@@ -10,7 +10,7 @@ from flask_marshmallow import Marshmallow
 #Mapped - maps a class attribute to a table, column, or relationship
 #mapped_columns -sets column and allows for adding any constraints needed(unique, nullable, primary_key)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
-from sqlalchemy import ForeignKey, Table, Column, String, Integer, select, delete
+from sqlalchemy import ForeignKey, Table, Column, String, Integer, select, delete, float
 from marshmallow import ValidationError, fields
 from typing import List
 from datetime import date
@@ -47,7 +47,7 @@ class Customer(Base):
     name: Mapped[str] = mapped_column(db.String(225), nullable=False)
     email: Mapped[str] = mapped_column(db.String(225))
     address: Mapped[str] = mapped_column(db.String(225))
-    orders: Mapped [List["Orders"]] = db.relationship(back_populates='customer') 
+    orders: Mapped[List["Orders"]] = db.relationship(back_populates='customer') 
 
 
 '''Association Table: order_products
@@ -76,7 +76,7 @@ class Orders(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     order_date: Mapped[date] = mapped_column(db.Date, nullable=False)
 
-    customer_id: Mapped[int] =mapped_column(db.ForeignKey('Customer.id'))
+    customer_id: Mapped[int] =mapped_column(db.ForeignKey('customer.id'))
     #Creates a many to one relationship to customer table
     customer: Mapped['Customer'] = db.relationship('Customer', back_populates='orders')
     #creating a many-to-many relationship to Products through our association table order_products
@@ -111,7 +111,7 @@ class ProductSchema(ma.SQLAlchemyAutoSchema): #Creates schema field based on the
 class OrderSchema(ma.SQLAlchemyAutoSchema): #Creates schema field based on the SQLAlchemy model passed
     class Meta:
         model = Orders
-        Include_fk = True #Needed because auto schemas don't auto recogize foreign keys (customer_id)
+        include_fk = True #Needed because auto schemas don't auto recogize foreign keys (customer_id)
 
 customer_schema = CustomerSchema()
 customers_schema = CustomerSchema(many=True)
@@ -136,7 +136,7 @@ def add_customer():
     try:
         customer_data = customer_schema.load(request.json)
     except ValidationError as e:
-        return jsonify(e.messsages), 400
+        return jsonify(e.messages), 400
     
     new_customer = Customer(name=customer_data["name"], email=customer_data["email"], address=customer_data["address"])
     db.session.add(new_customer)
@@ -227,7 +227,7 @@ def get_products():
 
 #Retrieve a product by order id
 @app.route('/products/<int:id>', methods=['GET'])
-def get_product():
+def get_product(id):
     query = select(Products).where(Products.id == id)
     result = db.session.execute(query).scalars().first() #first() grabs the first object returned
 
@@ -265,9 +265,9 @@ def delete_product(id):
     if not product:
         return jsonify({"Message": "Invalid product id"}), 400
 
-        db.session.delete(product)
-        db.session.commit()
-        return jsonify({"Message":f"Successfully deleted product {id}"}), 200               
+    db.session.delete(product)
+    db.session.commit()
+    return jsonify({"Message":f"Successfully deleted product {id}"}), 200               
 
 
 
@@ -279,22 +279,26 @@ def add_order():
     try:
         order_data = order_schema.load(request.json)
     except ValidationError as e:
-        return jsonify({"Error": "Invalid data", "Details": e.messages}), 400
+        return jsonify(e.messages), 400
 
     customer_id = order_data.get('customer_id')
     if not customer_id:
-        return jsonify({"Error": "Missing customer_id"}), 400
+        return jsonify({"Error": "Missing customer_id"}), 400    
 
-    customer = db.session.get(Customer, customer_id)
-    if not customer:
-        return jsonify({"Error": "Invalid customer_id"}), 404
+    #Retrieve customer id
+    customer = db.session.get(Customer, customer_id)     
 
-    new_order = Orders(order_date=order_data['order_date'], customer_id=customer_id)
-    db.session.add(new_order)
-    db.session.commit()
+    #Check if customer exists
+    if customer:
+        new_order = Orders(order_date=order_data['order_date'], customer_id=customer_id['customer_id'])
 
-    return jsonify({'Message': 'New Order Placed!', "order": order_schema.dump(new_order)}), 201
+        db.session.add(new_order)
+        db.session.commit()
 
+        return jsonify({'Message': 'New Order Placed!', "order": order_schema.dump(new_order)}), 201
+
+    else:
+        return jsonify({"Message": "Invalid customer id"}), 400
 
 #ADD Item to Order
 @app.route("/orders/<int:order_id>/add_product/<int:product_id>", methods=['PUT'])
@@ -338,7 +342,7 @@ def get_user_order(customer_id):
     if not orders:
         return jsonify({"Message": "No orders found for this customer"}), 400
 
-    return jsonify(orders.schema.dump(orders)), 200 
+    return jsonify(orders_schema.dump(orders)), 200 
 
 
 #Get all products from an order
