@@ -10,7 +10,7 @@ from flask_marshmallow import Marshmallow
 #Mapped - maps a class attribute to a table, column, or relationship
 #mapped_columns -sets column and allows for adding any constraints needed(unique, nullable, primary_key)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
-from sqlalchemy import ForeignKey, Table, Column, String, Integer, select, delete, float
+from sqlalchemy import ForeignKey, Table, Column, String, Integer, select, delete, Float
 from marshmallow import ValidationError, fields
 from typing import List
 from datetime import date
@@ -76,7 +76,7 @@ class Orders(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     order_date: Mapped[date] = mapped_column(db.Date, nullable=False)
 
-    customer_id: Mapped[int] =mapped_column(db.ForeignKey('customer.id'))
+    customer_id: Mapped[int] =mapped_column(db.ForeignKey('Customer.id'))
     #Creates a many to one relationship to customer table
     customer: Mapped['Customer'] = db.relationship('Customer', back_populates='orders')
     #creating a many-to-many relationship to Products through our association table order_products
@@ -85,7 +85,7 @@ class Orders(Base):
 
 #Initialize the database and create tables
 with app.app_context():
-    db.create_all() #First it checks which tables already exist then creates the tables not found
+         db.create_all() #First it checks which tables already exist then creates the tables not found
                     #If table is found with the same name it doesn't construct or modify
                     #DOES NOT MODIFY TABLES. if you want to modify you must drop table and recreate.
 
@@ -221,8 +221,13 @@ def create_product():
 #Retrieve all Products
 @app.route('/products', methods=['GET'])
 def get_products():
-    products = Products.query.all()
-    return jsonify(products_schema.dump(products)), 200
+    try:
+        query = select(Products)
+        result = db.session.execute(query).scalars()
+        products = result.all()
+        return products_schema_schema.jsonify(products), 200
+    except ValidationError as e:
+        return jsonify(e.messages), 400
 
 
 #Retrieve a product by order id
