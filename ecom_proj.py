@@ -47,6 +47,7 @@ class Customer(Base):
     name: Mapped[str] = mapped_column(db.String(225), nullable=False)
     email: Mapped[str] = mapped_column(db.String(225))
     address: Mapped[str] = mapped_column(db.String(225))
+    
     orders: Mapped[List["Orders"]] = db.relationship(back_populates='customer') 
 
 
@@ -68,6 +69,7 @@ class Products(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     product_name: Mapped[str] = mapped_column(db.String(225), nullable=False)
     price: Mapped[float] = mapped_column(db.Float, nullable=False)
+    
     orders: Mapped[List['Orders']] = db.relationship(secondary=order_products, back_populates="products")
 
 class Orders(Base):
@@ -81,6 +83,7 @@ class Orders(Base):
     customer: Mapped['Customer'] = db.relationship('Customer', back_populates='orders')
     #creating a many-to-many relationship to Products through our association table order_products
     #specifying that this relationsip goes through a secondary table (order_products)
+    
     products: Mapped[List['Products']] = db.relationship(secondary=order_products, back_populates="orders")       
 
 #Initialize the database and create tables
@@ -159,14 +162,8 @@ def get_customers():
 #Get individual customer using GET method and dynamic route
 @app.route('/customers/<int:id>', methods=['GET'])
 def get_customer(id): 
-    
-    query = select(Customer).where(Customer.id == id)
-    result = db.session.execute(query).scalars().first() #first() grabs the first object returned
-
-    if result is None:
-        return jsonify({"Error": "Customer not found"}), 400
-
-    return customers_schema.jsonify(result), 200
+    customer = db.session.get(Customer, id)
+    return customer_schema.jsonify(customer), 200
 
 #Update a user by ID
 @app.route('/customers/<int:id>', methods=['PUT'])
@@ -225,7 +222,7 @@ def get_products():
         query = select(Products)
         result = db.session.execute(query).scalars()
         products = result.all()
-        return products_schema_schema.jsonify(products), 200
+        return products_schema.jsonify(products), 200
     except ValidationError as e:
         return jsonify(e.messages), 400
 
@@ -233,13 +230,8 @@ def get_products():
 #Retrieve a product by order id
 @app.route('/products/<int:id>', methods=['GET'])
 def get_product(id):
-    query = select(Products).where(Products.id == id)
-    result = db.session.execute(query).scalars().first() #first() grabs the first object returned
-
-    if result is None:
-        return jsonify({"Error": "Product not found"}), 400
-
-    return products_schema.jsonify(result), 200
+    product = db.session.get(Products, id)
+    return product_schema.jsonify(product), 200
 
 
 #Update a product by ID
@@ -295,7 +287,7 @@ def add_order():
 
     #Check if customer exists
     if customer:
-        new_order = Orders(order_date=order_data['order_date'], customer_id=customer_id['customer_id'])
+        new_order = Orders(order_date=order_data['order_date'], customer_id=order_data['customer_id'])
 
         db.session.add(new_order)
         db.session.commit()
@@ -342,7 +334,7 @@ def delete_product_from_order(order_id, product_id):
 #Gets all orders for a user
 @app.route('/orders/customer/<int:customer_id>', methods=['GET'])
 def get_user_order(customer_id):
-    orders = Orders.query.filter_by(customer_id=customer_id).all()
+    orders = db.session.query(Orders).filter_by(customer_id=customer_id).all()
 
     if not orders:
         return jsonify({"Message": "No orders found for this customer"}), 400
@@ -353,7 +345,7 @@ def get_user_order(customer_id):
 #Get all products from an order
 @app.route('/orders/<int:order_id>/products', methods=['GET'])
 def get_order_products(order_id):
-    order = Orders.query.get(order_id)
+    order = db.session.query(Orders).get(order_id)
     if not order:
         return jsonify({"Message": "Order not found"}), 400
 
